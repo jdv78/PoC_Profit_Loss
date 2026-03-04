@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARR Currency Data Flow</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0d1117; color: #c9d1d9; overflow: auto; }
+
+  .container { max-width: 1600px; margin: 0 auto; padding: 24px; }
+
+  h1 { font-size: 22px; font-weight: 600; color: #e6edf3; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #8b949e; margin-bottom: 28px; }
+
+  .flow-canvas { position: relative; width: 100%; min-height: 1750px; }
+
+  /* Section headers */
+  .section-label {
+    position: absolute; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: #8b949e; writing-mode: vertical-rl; transform: rotate(180deg);
+  }
+
+  /* Nodes */
+  .node {
+    position: absolute; border-radius: 8px; padding: 12px 16px;
+    font-size: 12px; min-width: 180px; cursor: default;
+    border: 1px solid; transition: box-shadow 0.2s;
+  }
+  .node:hover { box-shadow: 0 0 20px rgba(255,255,255,0.08); }
+  .node .title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .node .detail { font-size: 11px; opacity: 0.8; line-height: 1.5; }
+  .node .tag { display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Source nodes */
+  .source { background: #1a1f2e; border-color: #3b82f6; }
+  .source .title { color: #60a5fa; }
+  .source .tag { background: #1e3a5f; color: #60a5fa; }
+
+  /* Currency nodes - FOCUS */
+  .currency { background: #1f2a1a; border-color: #f59e0b; border-width: 2px; box-shadow: 0 0 15px rgba(245,158,11,0.15); }
+  .currency .title { color: #fbbf24; }
+  .currency .tag { background: #3d2e0a; color: #fbbf24; }
+
+  /* Dimension nodes */
+  .dim { background: #1a1f2e; border-color: #6366f1; }
+  .dim .title { color: #818cf8; }
+  .dim .tag { background: #1e1b4b; color: #818cf8; }
+
+  /* Fact nodes */
+  .fact { background: #1a2332; border-color: #06b6d4; }
+  .fact .title { color: #22d3ee; }
+  .fact .tag { background: #0a2832; color: #22d3ee; }
+
+  /* Measure nodes */
+  .measure { background: #261a2e; border-color: #a855f7; }
+  .measure .title { color: #c084fc; }
+  .measure .tag { background: #2e1a3e; color: #c084fc; }
+
+  /* Output nodes */
+  .output { background: #1a2e1a; border-color: #22c55e; }
+  .output .title { color: #4ade80; }
+  .output .tag { background: #0a2e1a; color: #4ade80; }
+
+  /* SVG arrows */
+  svg.arrows {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 0;
+  }
+  .node { z-index: 1; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;
+    padding: 12px 16px; background: #161b22; border-radius: 8px; border: 1px solid #30363d;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* Focus banner */
+  .focus-banner {
+    background: linear-gradient(90deg, #3d2e0a, #1a1f2e); border: 1px solid #f59e0b;
+    border-radius: 8px; padding: 12px 20px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .focus-banner .icon { font-size: 22px; }
+  .focus-banner .text { font-size: 13px; color: #fbbf24; font-weight: 600; }
+  .focus-banner .desc { font-size: 11px; color: #8b949e; margin-top: 2px; font-weight: 400; }
+
+  /* Annotations */
+  .annotation {
+    position: absolute; font-size: 10px; color: #f59e0b; font-weight: 600;
+    background: #3d2e0a; padding: 3px 8px; border-radius: 4px; border: 1px solid #f59e0b;
+    z-index: 2; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>ARR Semantic Model Data Flow</h1>
+  <p class="subtitle">Power BI Desktop · Salesforce Integration · Currency Conversion Focus</p>
+
+  <div class="focus-banner">
+    <div class="icon">💱</div>
+    <div>
+      <div class="text">Currency Conversion Focus</div>
+      <div class="desc">Highlighted nodes show the full currency pipeline: source rates → exchange dimension → DAX conversion measures → report output</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Data Source</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b"></div> Currency (Focus)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div> Dimension</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div> Fact Table</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div> Measure Layer</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> Report Output</div>
+  </div>
+
+  <div class="flow-canvas" id="canvas">
+    <svg class="arrows" id="svg"></svg>
+
+    <!-- ====== LAYER 1: DATA SOURCES ====== -->
+    <div class="node source" id="src-sf" style="left:60px; top:30px; width:220px;">
+      <div class="title">Salesforce CRM</div>
+      <div class="detail">CurrencyType object<br>Account, Opportunity data<br>ARR Bridge records (EUR base)</div>
+      <div class="tag">API v48</div>
+    </div>
+
+    <div class="node currency" id="src-gsheet" style="left:340px; top:30px; width:240px;">
+      <div class="title">💱 Google Sheets — FX Rates</div>
+      <div class="detail">Monthly rolling forecast rates<br>EUR, USD, GBP, SEK, NOK, JPY<br>Filtered to LCM (Last Complete Month)</div>
+      <div class="tag">Currency Source</div>
+    </div>
+
+    <div class="node currency" id="src-startcur" style="left:640px; top:30px; width:220px;">
+      <div class="title">💱 Start Currency (Static)</div>
+      <div class="detail">Hard-coded opening balance FX<br>IsoCode → Value pairs<br>Baseline rates for OB comparison</div>
+      <div class="tag">Static FX Baseline</div>
+    </div>
+
+    <div class="node source" id="src-sf-budget" style="left:920px; top:30px; width:200px;">
+      <div class="title">Salesforce Budget</div>
+      <div class="detail">ARR Budget targets<br>By region, period, segment</div>
+      <div class="tag">Budget Data</div>
+    </div>
+
+    <!-- ====== LAYER 2: POWER QUERY / STAGING ====== -->
+    <div class="node currency" id="pq-currency" style="left:340px; top:190px; width:260px;">
+      <div class="title">💱 Currency Table (Power Query)</div>
+      <div class="detail">Unpivot monthly rates → Rolling FC<br>Join to LCM for current rate<br>Calculate: <code>Custom = EUR_rate / currency_rate</code><br>Calculate: <code>ex = rate / EUR_rate</code></div>
+      <div class="tag">PQ Transform</div>
+    </div>
+
+    <div class="node currency" id="pq-cureur" style="left:80px; top:200px; width:210px;">
+      <div class="title">💱 Currency (EUR) Helper</div>
+      <div class="detail">EUR-specific conversion factor<br>Used as denominator in FX calc</div>
+      <div class="tag">Helper Query</div>
+    </div>
+
+    <div class="node currency" id="pq-curusd" style="left:660px; top:190px; width:210px;">
+      <div class="title">💱 Currency (USD) Helper</div>
+      <div class="detail">USD baseline reference rates<br>Cross-rate denominator</div>
+      <div class="tag">Helper Query</div>
+    </div>
+
+    <!-- ====== LAYER 3: SEMANTIC MODEL TABLES ====== -->
+    <div class="node currency" id="dim-exchange" style="left:320px; top:370px; width:300px;">
+      <div class="title">💱 dim_exchange (15 cols)</div>
+      <div class="detail">
+        <b>Key columns:</b><br>
+        CurrencyID · IsoCode · ConversionRate<br>
+        Main USD · Value · <b>Start USD</b><br><br>
+        <b>Flow:</b> SF CurrencyType → Index → merge Currency<br>
+        → override rate with Custom if present<br>
+        → calc Main USD = EUR_rate / ConversionRate<br>
+        → merge Start Currency for OB rates
+      </div>
+      <div class="tag">Slicer-Driven Disconnected Table</div>
+    </div>
+
+    <div class="node dim" id="dim-date" style="left:30px; top:410px; width:170px;">
+      <div class="title">dim_date</div>
+      <div class="detail">20 cols · Calendar dim<br>Year, Month, Quarter, FY</div>
+      <div class="tag">Dimension</div>
+    </div>
+
+    <div class="node dim" id="dim-account" style="left:30px; top:520px; width:170px;">
+      <div class="title">dim_account</div>
+      <div class="detail">28 cols · Customer master<br>Industry, Territory, Hierarchy</div>
+      <div class="tag">Dimension</div>
+    </div>
+
+    <div class="node dim" id="dim-region" style="left:30px; top:620px; width:170px;">
+      <div class="title">Dim_regionFct</div>
+      <div class="detail">3 cols · Regional grouping</div>
+      <div class="tag">Dimension</div>
+    </div>
+
+    <div class="node fact" id="ft-arr" style="left:680px; top:380px; width:280px;">
+      <div class="title">ft_ARR_Bridge (30 cols)</div>
+      <div class="detail">
+        Main fact · ARR waterfall<br>
+        <b>Currency cols:</b> currency, ConversionRate,<br>
+        <b>Eur Values</b> (pre-converted to EUR)<br>
+        Links: dim_date, dim_account, Dim_regionFct
+      </div>
+      <div class="tag">Core Fact</div>
+    </div>
+
+    <div class="node fact" id="ft-fct-new" style="left:1020px; top:370px; width:240px;">
+      <div class="title">ft_Current New ARR Forecasts</div>
+      <div class="detail">16 cols · New ARR pipeline<br>EUR values · Close Date → dim_date</div>
+      <div class="tag">Forecast Fact</div>
+    </div>
+
+    <div class="node fact" id="ft-churn" style="left:1020px; top:480px; width:240px;">
+      <div class="title">ft_CurrentChurnForecasts</div>
+      <div class="detail">7 cols · Churn forecast<br>EUR values · End Date → dim_date</div>
+      <div class="tag">Forecast Fact</div>
+    </div>
+
+    <div class="node fact" id="ft-budget" style="left:1020px; top:590px; width:240px;">
+      <div class="title">ft_SaleForce ARR Budget</div>
+      <div class="detail">11 cols · Budget targets EUR<br>Region → Dim_regionFct, Date → dim_date</div>
+      <div class="tag">Budget Fact</div>
+    </div>
+
+    <div class="node fact" id="ft-ob" style="left:680px; top:520px; width:280px;">
+      <div class="title">Start_OpeningBalance_ARR</div>
+      <div class="detail">21 cols · Opening balance snapshot<br>EUR base · Account, Date, Region links</div>
+      <div class="tag">Opening Balance Fact</div>
+    </div>
+
+    <div class="node fact" id="ft-monthly" style="left:680px; top:640px; width:280px;">
+      <div class="title">Active ARR at end of - Monthly</div>
+      <div class="detail">19 cols · Month-end ARR snapshot<br>EUR base · Trending over time</div>
+      <div class="tag">Monthly Snapshot</div>
+    </div>
+
+    <!-- ====== LAYER 4: DAX MEASURE LAYER ====== -->
+    <div class="node measure" id="m-base" style="left:60px; top:790px; width:260px;">
+      <div class="title">Base Measures (EUR)</div>
+      <div class="detail">
+        SUM(ft_ARR_Bridge[Eur Values])<br>
+        SUM(ft_Current...[Eur Values])<br>
+        SUM(ft_Churn...[Eur Values])<br>
+        SUM(ft_Budget...[Eur Values])<br>
+        SUM(Start_OB...[Eur Values])
+      </div>
+      <div class="tag">Base Layer</div>
+    </div>
+
+    <div class="node currency" id="m-ex" style="left:380px; top:770px; width:340px;">
+      <div class="title">💱 Currency Conversion Measures (EX)</div>
+      <div class="detail">
+        <b>Pattern (all identical):</b><br>
+        <code>IF(COUNTROWS(VALUES(dim_exchange[CurrencyID]))=1,</code><br>
+        <code>&nbsp;&nbsp;[Base Measure] * MAX(dim_exchange[ConversionRate]),</code><br>
+        <code>&nbsp;&nbsp;0)</code><br><br>
+        <b>Opening Balance uses Start USD instead:</b><br>
+        <code>[Base] * MAX(dim_exchange[Start USD])</code><br><br>
+        Applied to: ARR Bridge, New ARR FCT, Churn FCT,<br>
+        Budget, Opening Balance, Monthly ARR
+      </div>
+      <div class="tag">Currency Conversion Layer</div>
+    </div>
+
+    <div class="node currency" id="m-exdiff" style="left:780px; top:790px; width:280px;">
+      <div class="title">💱 EX Diff $ (FX Impact)</div>
+      <div class="detail">
+        <code>Opening Balance ARR</code> (current rate)<br>
+        <code>- Opening Balance ARR with EX</code> (start rate)<br><br>
+        Isolates currency fluctuation impact<br>
+        on the opening ARR position
+      </div>
+      <div class="tag">FX Impact Measure</div>
+    </div>
+
+    <!-- ====== LAYER 5: BUSINESS MEASURES ====== -->
+    <div class="node measure" id="m-biz" style="left:60px; top:980px; width:280px;">
+      <div class="title">Business Measures (185 total)</div>
+      <div class="detail">
+        ARR Waterfall steps (_0 thru _a13)<br>
+        Budget Waterfall steps (_0 thru _13)<br>
+        YoY Deltas (Act vs LY%, FCT vs OB%)<br>
+        SoB% (Share of Business) by region/account<br>
+        Top N rankings · Color codes
+      </div>
+      <div class="tag">Business Logic</div>
+    </div>
+
+    <div class="node currency" id="m-slicer" style="left:420px; top:990px; width:280px;">
+      <div class="title">💱 Currency Slicer (Report)</div>
+      <div class="detail">
+        dim_exchange is <b>disconnected</b> — no relationship<br>
+        to fact tables. Slicer selects CurrencyID.<br><br>
+        DAX guard: <code>COUNTROWS(VALUES(CurrencyID))=1</code><br>
+        ensures single-currency selection before converting.
+      </div>
+      <div class="tag">User Interaction Point</div>
+    </div>
+
+    <!-- ====== LAYER 6: REPORT OUTPUT ====== -->
+    <div style="position:absolute; left:20px; top:1150px; width:1260px;">
+
+      <div style="background:#161b22; border:1px solid #30363d; border-radius:8px; padding:16px 20px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="font-size:16px; font-weight:700; color:#4ade80;">ACTIVE ARR acc ACTUALS & BUDGET 2026</div>
+          <div style="font-size:10px; color:#8b949e;">Last Refresh: 3/2/2026 7:19:59 PM</div>
+        </div>
+        <div style="font-size:10px; color:#8b949e; margin-bottom:12px;">Data Source: Salesforce · Region: All</div>
+
+        <!-- Currency Slicer -->
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
+          <div style="font-size:11px; font-weight:600; color:#fbbf24;">Currency Filter</div>
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; background:#1a2332; color:#8b949e; border:1px solid #30363d;">JPY</span>
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; background:#1a2332; color:#8b949e; border:1px solid #30363d;">GBP</span>
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; background:#1a2332; color:#8b949e; border:1px solid #30363d;">EUR</span>
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; background:#1a2332; color:#8b949e; border:1px solid #30363d;">CAD</span>
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; background:#1a2332; color:#8b949e; border:1px solid #30363d;">NOK</span>
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; background:#1a2332; color:#8b949e; border:1px solid #30363d;">SEK</span>
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:600; background:#1a2332; color:#8b949e; border:1px solid #30363d;">SGD</span>
+            <span style="padding:3px 10px; border-radius:4px; font-size:10px; font-weight:700; background:#3d2e0a; color:#fbbf24; border:2px solid #f59e0b;">USD</span>
+          </div>
+          <div style="font-size:9px; color:#f59e0b; margin-left:4px;">← dim_exchange[CurrencyID] slicer</div>
+        </div>
+
+        <!-- KPI Row 1 -->
+        <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:10px;">
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ARR Acc. YTD (Actuals)</div>
+            <div style="font-size:18px; font-weight:700; color:#e6edf3;">10.1M</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ARR Acc. LCM (Budget)</div>
+            <div style="font-size:18px; font-weight:700; color:#e6edf3;">20.4M</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">Actual − Budget $</div>
+            <div style="font-size:18px; font-weight:700; color:#f87171;">−10.3M</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">Actual vs Budget %</div>
+            <div style="font-size:18px; font-weight:700; color:#f87171;">−50.5%</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ARR Opening Balance</div>
+            <div style="font-size:18px; font-weight:700; color:#e6edf3;">10.6M</div>
+          </div>
+        </div>
+
+        <!-- KPI Row 2 -->
+        <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:16px;">
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ARR EOY (ACT+FCT)</div>
+            <div style="font-size:18px; font-weight:700; color:#e6edf3;">16.3M</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ARR EOY (Budget)</div>
+            <div style="font-size:18px; font-weight:700; color:#e6edf3;">26.2M</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ACTFCT − Budget $</div>
+            <div style="font-size:18px; font-weight:700; color:#f87171;">−9.8M</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ACTFCT vs Budget %</div>
+            <div style="font-size:18px; font-weight:700; color:#f87171;">−37.6%</div>
+          </div>
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px; text-align:center;">
+            <div style="font-size:9px; color:#8b949e; margin-bottom:4px;">ACTFCT vs OB % (EOY)</div>
+            <div style="font-size:18px; font-weight:700; color:#4ade80;">53.6%</div>
+          </div>
+        </div>
+
+        <!-- Report Visuals Grid -->
+        <div style="display:grid; grid-template-columns:1fr 1.4fr 1fr; gap:10px;">
+
+          <!-- Active ARR acc Table -->
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px;">
+            <div style="font-size:10px; font-weight:700; color:#e6edf3; margin-bottom:6px;">Active ARR acc − Actuals YTD vs Budget LCM</div>
+            <div style="font-size:9px; color:#8b949e; margin-bottom:6px;">Source: Salesforce (Total Cloud)</div>
+            <table style="width:100%; font-size:9px; border-collapse:collapse;">
+              <thead><tr style="color:#8b949e; border-bottom:1px solid #30363d;">
+                <th style="text-align:left; padding:3px 2px;">Business Area</th>
+                <th style="text-align:right; padding:3px 2px;">OB</th>
+                <th style="text-align:right; padding:3px 2px;">New</th>
+                <th style="text-align:right; padding:3px 2px;">Red/Ch</th>
+                <th style="text-align:right; padding:3px 2px;">Act Acc</th>
+              </tr></thead>
+              <tbody style="color:#c9d1d9;">
+                <tr><td style="padding:2px;">Enterprise</td><td style="text-align:right;">9.4M</td><td style="text-align:right;">0.2M</td><td style="text-align:right; color:#f87171;">−0.6M</td><td style="text-align:right;">8.9M</td></tr>
+                <tr><td style="padding:2px;">PEA</td><td style="text-align:right;">1.2M</td><td style="text-align:right;">0.0M</td><td style="text-align:right;">0.0M</td><td style="text-align:right;">1.2M</td></tr>
+                <tr style="font-weight:700; border-top:1px solid #30363d;"><td style="padding:2px;">Total</td><td style="text-align:right;">10.6M</td><td style="text-align:right;">0.2M</td><td style="text-align:right; color:#f87171;">−0.6M</td><td style="text-align:right;">10.1M</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- ARR Bridge Forecast Waterfall -->
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px;">
+            <div style="font-size:10px; font-weight:700; color:#e6edf3; margin-bottom:6px;">ARR Bridge Forecast (Waterfall)</div>
+            <div style="font-size:9px; color:#8b949e; margin-bottom:8px;">Source: Salesforce (Total Cloud)</div>
+            <div style="display:flex; align-items:flex-end; gap:3px; height:120px; padding-top:10px;">
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">OB</div>
+                <div style="width:100%; height:72px; background:#3b82f6; border-radius:2px;"></div>
+                <div style="font-size:7px; color:#c9d1d9; margin-top:2px;">10.6M</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">New</div>
+                <div style="width:100%; height:8px; background:#22c55e; border-radius:2px; margin-top:64px;"></div>
+                <div style="font-size:7px; color:#4ade80; margin-top:2px;">120.9K</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">Exp</div>
+                <div style="width:100%; height:6px; background:#22c55e; border-radius:2px; margin-top:66px;"></div>
+                <div style="font-size:7px; color:#4ade80; margin-top:2px;">100.2K</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">Con</div>
+                <div style="width:100%; height:20px; background:#f87171; border-radius:2px; margin-top:52px;"></div>
+                <div style="font-size:7px; color:#f87171; margin-top:2px;">−314K</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">Can</div>
+                <div style="width:100%; height:18px; background:#f87171; border-radius:2px; margin-top:54px;"></div>
+                <div style="font-size:7px; color:#f87171; margin-top:2px;">−278K</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">Limbo</div>
+                <div style="width:100%; height:10px; background:#f87171; border-radius:2px; margin-top:62px;"></div>
+                <div style="font-size:7px; color:#f87171; margin-top:2px;">−154K</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">Act Acc</div>
+                <div style="width:100%; height:68px; background:#3b82f6; border-radius:2px;"></div>
+                <div style="font-size:7px; color:#c9d1d9; margin-top:2px;">10.1M</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">CNAY</div>
+                <div style="width:100%; height:1px; background:#22c55e; border-radius:2px; margin-top:67px;"></div>
+                <div style="font-size:7px; color:#4ade80; margin-top:2px;">153K</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">Lost</div>
+                <div style="width:100%; height:2px; background:#f87171; border-radius:2px; margin-top:66px;"></div>
+                <div style="font-size:7px; color:#f87171; margin-top:2px;">−208K</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">+FCT</div>
+                <div style="width:100%; height:42px; background:#818cf8; border-radius:2px; margin-top:30px;"></div>
+                <div style="font-size:7px; color:#818cf8; margin-top:2px;">7.9M</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">−Churn</div>
+                <div style="width:100%; height:12px; background:#f87171; border-radius:2px; margin-top:60px;"></div>
+                <div style="font-size:7px; color:#f87171; margin-top:2px;">−1.8M</div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; flex:1;">
+                <div style="font-size:7px; color:#8b949e; margin-bottom:2px;">EOY</div>
+                <div style="width:100%; height:110px; background:#22c55e; border-radius:2px;"></div>
+                <div style="font-size:7px; font-weight:700; color:#4ade80; margin-top:2px;">16.3M</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ARR Bridge Budget -->
+          <div style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:10px;">
+            <div style="font-size:10px; font-weight:700; color:#e6edf3; margin-bottom:6px;">ARR Bridge Budget</div>
+            <div style="font-size:9px; color:#8b949e; margin-bottom:6px;">Source: Salesforce (Total Cloud) + Google Sheet</div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">OB</span><div style="height:10px; width:40%; background:#3b82f6; border-radius:2px;"></div><span style="font-size:8px; color:#c9d1d9;">10.6M</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">New Logo</span><div style="height:10px; width:4%; background:#22c55e; border-radius:2px;"></div><span style="font-size:8px; color:#4ade80;">1.0M</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">Expansion</span><div style="height:10px; width:2%; background:#22c55e; border-radius:2px;"></div><span style="font-size:8px; color:#4ade80;">531K</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">Cancel</span><div style="height:10px; width:5%; background:#f87171; border-radius:2px;"></div><span style="font-size:8px; color:#f87171;">−1.3M</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">Contract</span><div style="height:10px; width:1%; background:#f87171; border-radius:2px;"></div><span style="font-size:8px; color:#f87171;">−212K</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">Acc. LCM</span><div style="height:10px; width:78%; background:#3b82f6; border-radius:2px;"></div><span style="font-size:8px; color:#c9d1d9;">20.4M</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">New ROY</span><div style="height:10px; width:26%; background:#818cf8; border-radius:2px;"></div><span style="font-size:8px; color:#818cf8;">6.9M</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">Churn ROY</span><div style="height:10px; width:5%; background:#f87171; border-radius:2px;"></div><span style="font-size:8px; color:#f87171;">−1.2M</span></div>
+              <div style="display:flex; align-items:center; gap:4px;"><span style="font-size:8px; color:#8b949e; width:55px;">Budget EOY</span><div style="height:10px; width:100%; background:linear-gradient(90deg,#3b82f6,#22c55e); border-radius:2px;"></div><span style="font-size:8px; font-weight:700; color:#4ade80;">26.2M</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Currency flow annotation -->
+        <div style="margin-top:12px; padding:8px 12px; background:#3d2e0a; border:1px solid #f59e0b; border-radius:6px; display:flex; align-items:center; gap:8px;">
+          <span style="font-size:14px;">💱</span>
+          <span style="font-size:10px; color:#fbbf24;">All values above are dynamically converted to <b>USD</b> via <code>dim_exchange[ConversionRate]</code> · Opening Balance uses <code>Start USD</code> rate · FX Impact isolated in <code>EX Diff $</code> measure</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ====== ANNOTATIONS ====== -->
+    <div class="annotation" style="left:505px; top:155px;">Merged in PQ ↓</div>
+    <div class="annotation" style="left:730px; top:155px;">Merged into dim_exchange ↓</div>
+    <div class="annotation" style="left:625px; top:750px;">ConversionRate (current) vs Start USD (opening)</div>
+    <div class="annotation" style="left:170px; top:930px;">All biz measures consume EX-converted values ↑</div>
+
+  </div>
+</div>
+
+<script>
+const arrows = [
+  // Sources to PQ
+  { from: 'src-sf', to: 'dim-exchange', color: '#3b82f6', dash: false },
+  { from: 'src-gsheet', to: 'pq-currency', color: '#f59e0b', dash: false },
+  { from: 'src-startcur', to: 'dim-exchange', color: '#f59e0b', dash: false },
+  { from: 'pq-cureur', to: 'pq-currency', color: '#f59e0b', dash: true },
+  { from: 'pq-curusd', to: 'dim-exchange', color: '#f59e0b', dash: true },
+
+  // PQ to dim_exchange
+  { from: 'pq-currency', to: 'dim-exchange', color: '#f59e0b', dash: false },
+
+  // Sources to facts
+  { from: 'src-sf', to: 'ft-arr', color: '#3b82f6', dash: false },
+  { from: 'src-sf', to: 'ft-ob', color: '#3b82f6', dash: false },
+  { from: 'src-sf', to: 'ft-monthly', color: '#3b82f6', dash: false },
+  { from: 'src-sf-budget', to: 'ft-budget', color: '#3b82f6', dash: false },
+  { from: 'src-sf', to: 'ft-fct-new', color: '#3b82f6', dash: false },
+  { from: 'src-sf', to: 'ft-churn', color: '#3b82f6', dash: false },
+
+  // Dimensions to facts
+  { from: 'dim-date', to: 'ft-arr', color: '#6366f140', dash: true },
+  { from: 'dim-account', to: 'ft-arr', color: '#6366f140', dash: true },
+  { from: 'dim-region', to: 'ft-arr', color: '#6366f140', dash: true },
+
+  // Facts to base measures
+  { from: 'ft-arr', to: 'm-base', color: '#06b6d4', dash: false },
+  { from: 'ft-fct-new', to: 'm-base', color: '#06b6d4', dash: false },
+  { from: 'ft-churn', to: 'm-base', color: '#06b6d4', dash: false },
+  { from: 'ft-budget', to: 'm-base', color: '#06b6d4', dash: false },
+  { from: 'ft-ob', to: 'm-base', color: '#06b6d4', dash: false },
+
+  // Base to EX conversion
+  { from: 'm-base', to: 'm-ex', color: '#f59e0b', dash: false },
+  { from: 'dim-exchange', to: 'm-ex', color: '#f59e0b', dash: false },
+
+  // EX to EX diff
+  { from: 'm-ex', to: 'm-exdiff', color: '#f59e0b', dash: false },
+
+  // EX to business measures
+  { from: 'm-ex', to: 'm-biz', color: '#a855f7', dash: false },
+  { from: 'm-exdiff', to: 'm-biz', color: '#a855f7', dash: true },
+
+  // Slicer to dim_exchange
+  { from: 'dim-exchange', to: 'm-slicer', color: '#f59e0b', dash: false },
+
+  // To output — arrows stop at the report dashboard top edge
+  // (out-report node removed; arrows drawn manually to fixed Y coordinate)
+];
+
+function getCenter(id, side) {
+  const el = document.getElementById(id);
+  if (!el) return { x: 0, y: 0 };
+  const r = el.getBoundingClientRect();
+  const canvas = document.getElementById('canvas').getBoundingClientRect();
+  const cx = r.left - canvas.left + r.width / 2;
+  const top = r.top - canvas.top;
+  const bot = r.top - canvas.top + r.height;
+  if (side === 'bottom') return { x: cx, y: bot };
+  if (side === 'top') return { x: cx, y: top };
+  return { x: cx, y: top + r.height / 2 };
+}
+
+function drawArrows() {
+  const svg = document.getElementById('svg');
+  svg.innerHTML = '';
+
+  // Defs for arrowheads
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  const colors = ['#3b82f6', '#f59e0b', '#06b6d4', '#a855f7', '#22c55e', '#6366f140'];
+  colors.forEach(c => {
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'arrow-' + c.replace('#', ''));
+    marker.setAttribute('markerWidth', '8');
+    marker.setAttribute('markerHeight', '8');
+    marker.setAttribute('refX', '6');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('orient', 'auto');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M0,0 L0,6 L6,3 z');
+    path.setAttribute('fill', c);
+    marker.appendChild(path);
+    defs.appendChild(marker);
+  });
+  svg.appendChild(defs);
+
+  // Manual arrows to report output section
+  const reportY = 1150;
+  const manualArrows = [
+    { fromId: 'm-biz', color: '#22c55e', dash: false },
+    { fromId: 'm-slicer', color: '#f59e0b', dash: false },
+    { fromId: 'm-exdiff', color: '#f59e0b', dash: true },
+  ];
+  manualArrows.forEach(ma => {
+    const from = getCenter(ma.fromId, 'bottom');
+    const toX = from.x;
+    const toY = reportY;
+    const midY = (from.y + toY) / 2;
+    const d = `M${from.x},${from.y} C${from.x},${midY} ${toX},${midY} ${toX},${toY}`;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', ma.color);
+    path.setAttribute('stroke-width', ma.color === '#f59e0b' ? '2' : '1.2');
+    path.setAttribute('stroke-opacity', ma.dash ? '0.5' : '0.7');
+    if (ma.dash) path.setAttribute('stroke-dasharray', '6,4');
+    path.setAttribute('marker-end', 'url(#arrow-' + ma.color.replace('#', '') + ')');
+    svg.appendChild(path);
+  });
+
+  arrows.forEach(a => {
+    const from = getCenter(a.from, 'bottom');
+    const to = getCenter(a.to, 'top');
+
+    const midY = (from.y + to.y) / 2;
+    const d = `M${from.x},${from.y} C${from.x},${midY} ${to.x},${midY} ${to.x},${to.y}`;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', a.color);
+    path.setAttribute('stroke-width', a.color === '#f59e0b' ? '2' : '1.2');
+    path.setAttribute('stroke-opacity', a.dash ? '0.5' : '0.7');
+    if (a.dash) path.setAttribute('stroke-dasharray', '6,4');
+    path.setAttribute('marker-end', 'url(#arrow-' + a.color.replace('#', '') + ')');
+    svg.appendChild(path);
+  });
+}
+
+window.addEventListener('load', drawArrows);
+window.addEventListener('resize', drawArrows);
+</script>
+
+</body>
+</html>
